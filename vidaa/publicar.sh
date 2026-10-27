@@ -47,7 +47,11 @@ wait_site() {
   echo "Waiting for $SITE/config.js to show $want (up to $((WAIT_MAX / 60)) min)..."
   while :; do
     got="$(curl -fsS --max-time 20 -H 'Cache-Control: no-cache' "$SITE/config.js?t=$start$RANDOM" 2>/dev/null || true)"
-    case "$got" in *"\"buildVersion\": \"$want\""*) echo "Site is up with $want."; return 0 ;; esac
+    if [ -n "$want" ]; then
+      case "$got" in *"\"buildVersion\": \"$want\""*) echo "Site is up with $want."; return 0 ;; esac
+    else   # builds from before buildVersion existed: wait until the stamp is gone
+      case "$got" in *"window.CONFIG"*) case "$got" in *buildVersion*) ;; *) echo "Site is up with the old build (no build stamp)."; return 0 ;; esac ;; esac
+    fi
     now="$(date +%s)"
     if [ $((now - start)) -ge "$WAIT_MAX" ]; then
       echo "The site still doesn't show $want after $((WAIT_MAX / 60)) min. Check the Pages tab on GitHub." >&2
@@ -61,7 +65,7 @@ build_of() {   # build_of <config.js>: its buildVersion
   python - "$1" <<'PY'
 import json, sys
 text = open(sys.argv[1], encoding='utf-8').read()
-print(json.loads(text.split('window.CONFIG = ', 1)[1].rstrip().rstrip(';'))['buildVersion'])
+print(json.loads(text.split('window.CONFIG = ', 1)[1].rstrip().rstrip(';')).get('buildVersion', ''))
 PY
 }
 
@@ -74,7 +78,7 @@ if [ -n "$back" ]; then
   git checkout -q HEAD~1 -- .
   git add -A
   want="$(build_of config.js)"
-  git commit -q -m "Go back to $prev (build $want)"
+  git commit -q -m "Go back to $prev (build ${want:-without stamp})"
   if [ -n "$dry" ]; then echo "Dry run: would republish $prev (build $want)."; exit 0; fi
   git push -q origin "$BRANCH"
   wait_site "$want"
