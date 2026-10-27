@@ -519,7 +519,8 @@ def main(argv=None):
         if getattr(args, key) is not None:
             cfg[key] = getattr(args, key)
 
-    srv = Servidor(cfg)
+    # "bind": the PC's address only, when Windows ICS already holds 0.0.0.0:53
+    srv = Servidor(cfg, cfg.get("bind") or "0.0.0.0")
     try:
         srv.start()
     except PermissionError:
