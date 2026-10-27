@@ -45,7 +45,7 @@ python vidaa/server/servidor.py
 ```
 
 - Dependência: `pip install dnslib`. O certificado vem do `certificado.py` (ECDSA P-256, SAN `vidaahub.com`, `CA:FALSE`, feito com o `openssl` do Git Bash). Ele nunca é importado no Windows.
-- Config em `local/servidor.json`, criada na primeira execução (IP do PC, sub-rede, DNS de saída, portas, pasta de cópias). Portas padrão: DNS 53 (UDP e TCP), HTTPS 443, HTTP 8080.
+- Config em `local/servidor.json`, criada na primeira execução (IP do PC, sub-rede, DNS de saída, portas, pasta de cópias). Portas padrão: DNS 53 (UDP e TCP), HTTPS 443, HTTP 8080. Se o Windows já ocupa a porta 53 (Compartilhamento de Conexão, ICS), ponha `"bind": "<IP do PC>"` na config: o servidor escuta só nesse endereço.
 - DNS só para a sub-rede da casa. `vidaahub.com` e `www.vidaahub.com` respondem com o IP do PC; outros tipos de registro voltam vazios (NOERROR); todo o resto é encaminhado. Só a contagem de consultas é registrada.
 - HTTPS: `/` e `/shell/*` (instalador), `/store/*` (cópia local, nunca código remoto), `/ping`, `POST /backup`, `GET /backups`, `POST /log`. Corpo JSON de até 256 KB.
 - Mantém o PC acordado enquanto roda. Libere o firewall só para a rede privada.
