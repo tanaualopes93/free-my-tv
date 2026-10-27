@@ -2,6 +2,7 @@
  * The TV's side of the web home screen: its apps, opening one, its inputs, its settings, the Back key, its time zone.
  *  - LG webOS: the TV's service bus (Luna), the same calls LG's launcher makes.
  *  - Samsung Tizen: Tizen's web APIs (tizen.application for the apps, tizen.tvwindow for the inputs).
+ *  - Hisense VIDAA: the browser's Hisense_* functions (installed as a web app through vidaahub.com).
  *  - A desktop browser: a stand-in with sample apps, so the screen can be previewed and tested on a computer.
  * Plain ES5: older TVs run a Chromium from 2015-2017 (webOS 3 and 4, Tizen 3).
  */
@@ -10,13 +11,14 @@ var TV = (function () {
 
   var webos = typeof window.PalmServiceBridge !== 'undefined';
   var samsung = !webos && typeof window.tizen !== 'undefined' && !!window.tizen.application;
+  var vidaa = !webos && !samsung && (typeof window.Hisense_GetModelName === 'function' || /VIDAA/i.test(navigator.userAgent));
   var calls = [];   // a bridge is collected if nothing holds it before its reply arrives
   var tizen2 = samsung && /Tizen 2\./.test(navigator.userAgent);
   // Tizen 2 (2016 TVs, WebKit 538) repaints every shadow on every frame of a focus animation: home.css turns them off.
   // So do TVs under 2 GB that draw the page at twice its size (an LG on webOS TV Lite 10, MT5889, 1.3 GB, ratio 2:
   // 23-28 fps moving along the shelf, 60 with lite; shadows off alone, 45). deviceMemory rounds down to 1 under 2 GB on
   // webOS 5+ and Tizen 5+, where 1.5 GB TVs at a ratio of 1 run smoothly.
-  if (tizen2 || ((webos || samsung) && navigator.deviceMemory && navigator.deviceMemory <= 1 && (window.devicePixelRatio || 1) > 1)) {
+  if (tizen2 || ((webos || samsung || vidaa) && navigator.deviceMemory && navigator.deviceMemory <= 1 && (window.devicePixelRatio || 1) > 1)) {
     document.documentElement.className += ' lite';
   }
 
@@ -341,6 +343,183 @@ var TV = (function () {
     }
   }
 
+  // MARK: - Hisense VIDAA
+
+  // VIDAA has no public reference for listing or opening apps: Hisense_getInstalledApps, Hisense_launchAppViaName and
+  // Hisense_launchAppViaUri exist on its browser (found by listing window), with arguments nobody has published. So
+  // the list falls back to the usual VIDAA apps, opening one tries each call in turn and counts only when this page
+  // goes to the background, and About shows the calls' own source, to set them right for a firmware.
+  // [id, title, logo, color, web address]: the address only where the app is a web page known to work on VIDAA.
+  var VIDAA_APPS = [
+    ['netflix', 'Netflix', 'icons/netflix.svg'], ['youtube', 'YouTube', 'icons/youtube.png', '', 'https://www.youtube.com/tv'],
+    ['prime', 'Prime Video', 'icons/prime.png'], ['disney', 'Disney+', '', '#1838C8'], ['max', 'Max', 'icons/max.svg'],
+    ['globoplay', 'Globoplay', '', '#FF5A1F'], ['appletv', 'Apple TV', '', '#B8BCC6'], ['spotify', 'Spotify', 'icons/spotify.svg'],
+    ['deezer', 'Deezer', 'icons/deezer.svg'], ['plutotv', 'Pluto TV', '', '#2D2D2D'],
+    ['twitch', 'Twitch', '', '#9146FF', 'https://hisense.tv.twitch.tv/'], ['vevo', 'Vevo', '', '#E5004C', 'https://hisense.vevo.com'],
+    ['jellyfin', 'Jellyfin', 'icons/jellyfin.svg']
+  ];
+
+  // The web apps' list on the TV (the one vidaahub.com's installs write), read through HiUtils_createRequest.
+  var VIDAA_REGISTRY = 'websdk/Appinfo.json';
+
+  var vidaaList = [];   // what apps() last listed, with the addresses launch() needs
+  var vidaaLog = [];    // the last attempts to open something, for About
+
+  function has(name) {
+    try { return typeof window[name] === 'function'; } catch (e) { return false; }
+  }
+
+  function note(text) {
+    vidaaLog.push(text);
+    if (vidaaLog.length > 6) vidaaLog.shift();
+  }
+
+  /** One app from the TV's own lists, whichever field names its firmware uses; null without a name. */
+  function vidaaApp(a) {
+    if (!a || typeof a !== 'object') return null;
+    var title = a.AppName || a.appName || a.Title || a.title || a.name || a.Name || '';
+    if (!title || /free my tv/i.test(title)) return null;
+    return {
+      id: String(a.Id || a.appId || a.AppId || a.id || title), title: String(title),
+      icon: a.IconURL || a.Icon_96 || a.iconUrl || a.icon || a.Image || a.Thumb || '', color: '',
+      url: a.URL || a.url || a.appUrl || a.AppUrl || a.StartCommand || ''
+    };
+  }
+
+  /** The first list of apps in a reply (a JSON string, a list, or an object holding one). */
+  function vidaaListOf(res) {
+    if (typeof res === 'string') {
+      try { res = JSON.parse(res); } catch (e) { return []; }
+    }
+    if (!res || typeof res !== 'object') return [];
+    if (res instanceof Array) return res;
+    for (var k in res) if (res[k] instanceof Array) return res[k];
+    return [];
+  }
+
+  /** Apps the launcher lists, when Hisense_getInstalledApps answers (by return value or by callback), else null. */
+  function vidaaInstalled(done) {
+    if (!has('Hisense_getInstalledApps')) { done(null); return; }
+    var sent = false;
+    function finish(res) {
+      if (sent) return;
+      sent = true;
+      var out = [], list = vidaaListOf(res);
+      for (var i = 0; i < list.length; i++) {
+        var a = vidaaApp(list[i]);
+        if (a) out.push(a);
+      }
+      done(out.length ? out : null);
+    }
+    setTimeout(function () { finish(null); }, 1500);
+    try {
+      var res = window.Hisense_getInstalledApps(function (r) { finish(r); });
+      if (res !== undefined && res !== null) finish(res);
+    } catch (e) {
+      finish(null);
+    }
+  }
+
+  /** The web apps installed through vidaahub.com, from the TV's registry file. */
+  function vidaaRegistry() {
+    if (!has('HiUtils_createRequest')) return [];
+    try {
+      var res = window.HiUtils_createRequest('fileRead', {path: VIDAA_REGISTRY, mode: 6});
+      return res && res.ret ? vidaaListOf(res.msg) : [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  function vidaaApps(done) {
+    vidaaInstalled(function (installed) {
+      var out = installed || [], seen = {};
+      for (var i = 0; i < out.length; i++) seen[out[i].title.toLowerCase()] = true;
+      function add(a) {
+        if (!a || seen[a.title.toLowerCase()]) return;
+        seen[a.title.toLowerCase()] = true;
+        out.push(a);
+      }
+      if (!installed) {
+        VIDAA_APPS.forEach(function (k) { add({id: k[0], title: k[1], icon: k[2] || '', color: k[3] || '', url: k[4] || ''}); });
+      }
+      var registry = vidaaRegistry();
+      for (var j = 0; j < registry.length; j++) add(vidaaApp(registry[j]));
+      vidaaList = out;
+      done(out.map(function (a) { return {id: a.id, title: a.title, icon: a.icon, color: a.color}; }));
+    });
+  }
+
+  /**
+   * Opens an app: by name, then by address, then (a web app) by going to its page. A call counts only when this page
+   * goes to the background within 2.5 s: VIDAA's calls answer nothing, and a wrong argument is silently ignored.
+   */
+  function vidaaLaunch(id, done) {
+    var app = null;
+    for (var i = 0; i < vidaaList.length; i++) if (vidaaList[i].id === id) app = vidaaList[i];
+    if (!app) { if (done) done(false); return; }
+    var tries = [];
+    if (has('Hisense_launchAppViaName')) tries.push(['Hisense_launchAppViaName', function () { window.Hisense_launchAppViaName(app.title); }]);
+    if (app.url && has('Hisense_launchAppViaUri')) tries.push(['Hisense_launchAppViaUri', function () { window.Hisense_launchAppViaUri(app.url); }]);
+    var left = false;
+    function away() { left = true; }
+    document.addEventListener('visibilitychange', away);
+    window.addEventListener('pagehide', away);
+    window.addEventListener('blur', away);
+    function stop(ok) {
+      document.removeEventListener('visibilitychange', away);
+      window.removeEventListener('pagehide', away);
+      window.removeEventListener('blur', away);
+      if (done) done(ok);
+    }
+    function next(n) {
+      if (n >= tries.length) {
+        if (!app.url) { note(app.title + ': nothing opened it'); stop(false); return; }
+        note(app.title + ': location ' + app.url);
+        stop(true);
+        window.location.href = app.url;
+        return;
+      }
+      left = false;
+      var threw = '';
+      try { tries[n][1](); } catch (e) { threw = ' (' + e.message + ')'; }
+      var waited = 0, timer = setInterval(function () {
+        waited += 100;
+        if (left || document.hidden) {
+          clearInterval(timer);
+          note(app.title + ': ' + tries[n][0] + ' opened it');
+          stop(true);
+        } else if (waited >= 2500 || threw) {
+          clearInterval(timer);
+          note(app.title + ': ' + tries[n][0] + ' did nothing' + threw);
+          next(n + 1);
+        }
+      }, 100);
+    }
+    next(0);
+  }
+
+  function vidaaCall(name) {
+    if (!has(name)) return '';
+    try { return String(window[name]() || ''); } catch (e) { return ''; }
+  }
+
+  /** What About shows on VIDAA: whether each call exists and the start of its source, then the last attempts. */
+  function diagnostics() {
+    var names = ['Hisense_launchAppViaName', 'Hisense_launchAppViaUri', 'Hisense_StartApp', 'Hisense_getInstalledApps',
+      'Hisense_Exit', 'Hisense_CloseApp', 'HiUtils_createRequest'];
+    var out = [];
+    for (var i = 0; i < names.length; i++) {
+      var source = '';
+      try { source = has(names[i]) ? String(window[names[i]]).replace(/\s+/g, ' ').slice(0, 240) : 'missing'; } catch (e) { source = e.message; }
+      out.push(names[i] + ': ' + source);
+    }
+    var omi = window.omi_platform || window.opera_omi;
+    out.push('omi_platform.sendPlatformMessage: ' + (omi && typeof omi.sendPlatformMessage === 'function' ? 'yes' : 'missing'));
+    out.push('Window: ' + window.innerWidth + ' × ' + window.innerHeight + ' · ' + navigator.userAgent);
+    return out.concat(vidaaLog);
+  }
+
   // MARK: - About this TV
 
   /** done({model, firmware, system, version, ip}), with '' for what the TV doesn't tell. */
@@ -413,6 +592,13 @@ var TV = (function () {
       property('WIFI_NETWORK', function (v) {
         if (v.status === 'ON' && v.ipAddress && !out.ip) out.ip = v.ipAddress;
       });
+    } else if (vidaa) {
+      out.model = vidaaCall('Hisense_GetModelName');
+      out.firmware = vidaaCall('Hisense_GetFirmWareVersion');
+      var os = vidaaCall('Hisense_GetOSVersion');
+      out.system = 'VIDAA' + (os ? ' ' + os : '');
+      out.ip = vidaaCall('Hisense_GetIPAddress');
+      out.version = (window.CONFIG && CONFIG.appVersion) || '';
     } else {
       out = {model: 'OLED55C1', firmware: '03.33.85', system: 'webOS 6.0', version: 'preview', ip: '192.168.1.50'};
     }
@@ -422,17 +608,19 @@ var TV = (function () {
   // MARK: - The TV, whichever it is
 
   return {
-    name: webos ? 'webos' : samsung ? 'tizen' : 'browser',
+    name: webos ? 'webos' : samsung ? 'tizen' : vidaa ? 'vidaa' : 'browser',
 
     /**
      * Whether an app can open the TV's settings. Not on Tizen 2 (a 2016 KU6300): the "settings" request and
      * org.tizen.menu both answer success and nothing shows, and the remote API ignores MENU and HOME.
+     * Not on VIDAA, which has no call for it.
      */
-    canOpenSettings: !tizen2,
+    canOpenSettings: !tizen2 && !vidaa,
 
     /** Installed apps, as the TV's launcher lists them: [{id, title, icon, color}]. */
     apps: function (done) {
       if (samsung) { samsungApps(done); return; }
+      if (vidaa) { vidaaApps(done); return; }
       if (!webos) {
         done(SAMPLE.map(function (s) { return {id: s[0], title: s[1], icon: '', color: s[2]}; }));
         return;
@@ -479,6 +667,7 @@ var TV = (function () {
         else samsungLaunch(id, done);
         return;
       }
+      if (vidaa) { vidaaLaunch(id, done); return; }
       if (!webos) {
         if (done) setTimeout(function () { done(true); }, 0);
         return;
@@ -491,6 +680,7 @@ var TV = (function () {
     /** The antenna and HDMI inputs; `connected` when the TV says a device is on (when it tells). */
     inputs: function (done) {
       if (samsung) { samsungInputs(done); return; }
+      if (vidaa) { done([]); return; }   // no call lists or opens VIDAA's inputs
       var list = INPUTS.map(function (x) { return {id: x.id, key: x.key, label: x.label, symbol: x.symbol, connected: true}; });
       if (!webos) {
         list[2].connected = false;
@@ -525,6 +715,9 @@ var TV = (function () {
     /** The TV's model, firmware, system, IP address and this app's version, for About this TV. */
     about: about,
 
+    /** VIDAA: lines for About, to set the Hisense calls right for a firmware; null elsewhere. */
+    diagnostics: vidaa ? diagnostics : null,
+
     /** LG: keeps the TV's screensaver away while ours will take over (`hold` says when). */
     holdScreenSaver: holdScreenSaver,
 
@@ -532,6 +725,15 @@ var TV = (function () {
     back: function () {
       if (samsung) {
         try { window.tizen.application.getCurrentApplication().hide(); } catch (e) {}
+        return;
+      }
+      if (vidaa) {
+        // window.close() does nothing on VIDAA: Hisense_Exit (or CloseApp, on older firmware) leaves the app.
+        try {
+          if (has('Hisense_Exit')) window.Hisense_Exit();
+          else if (has('Hisense_CloseApp')) window.Hisense_CloseApp();
+          else window.close();
+        } catch (e) {}
         return;
       }
       if (window.PalmSystem && window.PalmSystem.platformBack) window.PalmSystem.platformBack();

@@ -134,6 +134,16 @@ You need a Samsung TV on Tizen, from 2015 or newer, and a computer on the same W
 
 This build takes your city from the TV's time zone (change it in *Home Settings* → *City*). For the trending picks, build it with your own `config.properties` and [TMDB key](#the-tmdb-key): open the folder in Claude Code and say *"Install Free My TV on my Samsung TV at 192.168.1.50. I live in Lisbon."* It sets up Samsung's tools, and on 2023 and newer TVs you sign in to your Samsung account in the browser to make the certificate. Your signed build installs with `python3 tizen/install.py 192.168.1.50`, which needs only Python: no Tizen Studio, and no Rosetta on Apple Silicon Macs.
 
+## Hisense TVs (VIDAA)
+
+The same home screen as a VIDAA web app (tested in a browser that stands in for the TV; first tried on a 58A6K). VIDAA apps are web addresses, so this one is hosted: `python3 vidaa/build.py --generic` makes `out/vidaa/`, which this fork publishes on GitHub Pages at <https://tanaualopes93.github.io/free-my-tv/>.
+
+1. **On your computer**, run [vidaa-appstore](https://github.com/trialuser/vidaa-appstore) with Free My TV in its list: it answers for `vidaahub.com`, the only site where VIDAA allows `Hisense_installApp`.
+2. **On the TV**, set the DNS server to your computer's IP, open `https://vidaahub.com/` in the browser (accept the certificate warning) and install Free My TV.
+3. **On the TV**, put the DNS back to automatic and restart the TV.
+
+VIDAA has no public reference for listing or opening apps. The shelf lists the usual VIDAA apps (or what `Hisense_getInstalledApps` returns, where it answers). Opening one tries `Hisense_launchAppViaName`, then `Hisense_launchAppViaUri`, and for web apps goes to their address. *Home Settings* → *About this TV* shows those calls' own source and the last tries, so they can be set right for a firmware. The drawer has no inputs and no TV Settings there.
+
 ## Settings
 
 The first values come from `config.properties`, created by the first build (Google TV, LG and Samsung use the same file). Most of them can also be changed on the TV, in *Free My TV* → *Home Settings*, and the TV's choice wins:

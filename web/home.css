@@ -508,6 +508,9 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 #citypick .row.field input::placeholder { color: rgba(255, 255, 255, 0.4); }
 #citypick .row { overflow: hidden; text-overflow: ellipsis; }
 #about .row .value.cut { overflow: hidden; text-overflow: ellipsis; }
+#about .box.wide { left: 60px; top: 60px; width: 1800px; min-height: 940px; }
+#about .box.wide .list { width: 800px; }
+#about .box.wide .diag { position: absolute; left: 870px; right: 30px; top: 40px; bottom: 26px; overflow: hidden; white-space: pre-wrap; word-wrap: break-word; font-size: 17px; line-height: 23px; font-weight: 500; color: rgba(255, 255, 255, 0.72); }
 .box .hint { padding: 14px 18px 0; font-size: 22px; font-weight: 500; color: rgba(255, 255, 255, 0.5); }
 .toggle { position: absolute; right: 24px; top: 13px; width: 78px; height: 44px; border-radius: 22px; background: #3A3D45; -webkit-transition: background-color 0.14s; transition: background-color 0.14s; }
 .toggle::after { content: ''; position: absolute; left: 4px; top: 4px; width: 36px; height: 36px; border-radius: 18px; background: #FFF; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35); -webkit-transition: -webkit-transform 0.14s; transition: transform 0.14s; }

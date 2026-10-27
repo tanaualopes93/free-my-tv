@@ -950,6 +950,9 @@
       [tr('Model'), info && info.model], [tr('Firmware'), info && info.firmware], [tr('System'), info && info.system],
       [tr('IP address'), info && info.ip], [tr('Time zone'), TV.zone()], ['Free My TV', info && info.version]
     ];
+    // VIDAA: its Hisense calls beside the rows, to set them right from a photo of this screen.
+    setClass(box, 'wide', !!TV.diagnostics);
+    if (TV.diagnostics) el('div', 'diag', box, TV.diagnostics().join('\n'));
     for (var i = 0; i < rows.length; i++) {
       var row = el('div', 'row', holder), label = el('span', '', row, rows[i][0]);
       fitValue(row, label, el('span', 'value', row, info ? rows[i][1] || tr('Unavailable') : '…'));
