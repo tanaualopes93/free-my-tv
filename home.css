@@ -508,9 +508,11 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 #citypick .row.field input::placeholder { color: rgba(255, 255, 255, 0.4); }
 #citypick .row { overflow: hidden; text-overflow: ellipsis; }
 #about .row .value.cut { overflow: hidden; text-overflow: ellipsis; }
-#about .box.wide { left: 60px; top: 60px; width: 1800px; min-height: 940px; }
-#about .box.wide .list { width: 800px; }
-#about .box.wide .diag { position: absolute; left: 870px; right: 30px; top: 40px; bottom: 26px; overflow: hidden; white-space: pre-wrap; word-wrap: break-word; font-size: 17px; line-height: 23px; font-weight: 500; color: rgba(255, 255, 255, 0.72); }
+#about .box.wide { left: 60px; top: 40px; width: 1800px; min-height: 980px; }
+#about .box.wide .list { width: 760px; }
+#about .box.wide .row.test { margin-top: 18px; box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.22); }
+/* The VIDAA diagnostic, big enough to read from a photo of the screen (28 px and up). */
+#about .box.wide .diag { position: absolute; left: 830px; right: 30px; top: 40px; bottom: 26px; overflow: hidden; white-space: pre-wrap; word-wrap: break-word; font-size: 28px; line-height: 36px; font-weight: 500; color: rgba(255, 255, 255, 0.82); }
 .box .hint { padding: 14px 18px 0; font-size: 22px; font-weight: 500; color: rgba(255, 255, 255, 0.5); }
 .toggle { position: absolute; right: 24px; top: 13px; width: 78px; height: 44px; border-radius: 22px; background: #3A3D45; -webkit-transition: background-color 0.14s; transition: background-color 0.14s; }
 .toggle::after { content: ''; position: absolute; left: 4px; top: 4px; width: 36px; height: 36px; border-radius: 18px; background: #FFF; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35); -webkit-transition: -webkit-transform 0.14s; transition: transform 0.14s; }
@@ -570,3 +572,16 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 
 /* Tizen 2 and 1 GB TVs (see tv.js): no shadows or animations; their GPUs can't keep up while the focus moves. */
 .lite * { box-shadow: none !important; -webkit-transition: none !important; transition: none !important; }
+
+/* VIDAA: "Abrindo…" over the app being opened (opacity only), and the dimmed look of an app nothing has opened. */
+.veil { position: absolute; left: 0; top: 0; right: 0; bottom: 0; border-radius: inherit; background: rgba(0, 0, 0, 0.62); opacity: 0; pointer-events: none; -webkit-transition: opacity 0.08s; transition: opacity 0.08s; }
+.veil .t { position: absolute; left: 6%; right: 6%; top: 50%; margin-top: -17px; height: 34px; line-height: 34px; text-align: center; font-size: 26px; font-weight: 600; white-space: nowrap; color: #FFF; }
+.opening .veil { opacity: 1; }
+.tile.off, .cell.off .face { background: #3A3A3E !important; }
+.tile .hint { display: none; position: absolute; left: 8%; right: 8%; bottom: 10px; text-align: center; font-size: 20px; font-weight: 600; line-height: 24px; color: #FFF; }
+.tile.off.focus .hint { display: block; }
+.tile.off.focus img, .tile.off.focus .word { opacity: 0.12; }
+.tile.off.focus { box-shadow: 0 0 0 3px #FFF, 0 18px 40px rgba(0, 0, 0, 0.34); }
+.tile.off img, .tile.off .word, .cell.off .face img, .cell.off .face .word { opacity: 0.3; }
+.cell.off .label { color: rgba(255, 255, 255, 0.35); }
+.cell .face.store .sym { position: absolute; left: 50%; top: 50%; margin: -32px 0 0 -32px; color: #FFF; }

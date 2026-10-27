@@ -54,6 +54,7 @@
   }
 
   var stage = $('stage'), body = document.body;
+  var say = TV.say;   // text only the VIDAA build shows
 
   /** The 1920 × 1080 stage fills the window (on the TV it already is 1920 × 1080). */
   function fit() {
@@ -301,6 +302,8 @@
         }
       }
       if (!out.length) out = apps.slice(0, FEW_APPS);
+    } else if (TV.name === 'vidaa') {
+      out = apps.slice(0, FEW_APPS);   // the remote's apps, then the TV's own list, in the order tv.js gives
     } else {
       for (var s = 0; s < SHELF.length && out.length < FEW_APPS; s++) {
         for (var a = 0; a < apps.length; a++) {
@@ -340,7 +343,7 @@
     for (i = 0; i < list.length; i++) setClass(list[i], 'focus', st.zone === Z.DRAWER && st.drawer === i);
     list = document.querySelectorAll('#apps .cell');
     for (i = 0; i < list.length; i++) setClass(list[i], 'focus', st.zone === Z.APPS && st.grid === i);
-    var rows = Math.max(1, Math.ceil(others.length / 5)), r = Math.floor(st.grid / 5), first = Math.max(0, Math.min(rows - 3, r - 1));
+    var rows = Math.max(1, Math.ceil(gridCount() / 5)), r = Math.floor(st.grid / 5), first = Math.max(0, Math.min(rows - 3, r - 1));
     $('apps').lastChild.style.webkitTransform = $('apps').lastChild.style.transform = 'translateY(' + (-first * 239) + 'px)';
     focusRows($('settings'), st.row, st.zone === Z.SETTINGS);
     focusRows($('shelfedit'), st.edit, st.zone === Z.EDIT);
@@ -389,10 +392,12 @@
     }
     var buttons = $('buttons');
     buttons.innerHTML = '';
-    var defs = [['live_tv', tr('light|Live TV')], ['hdmi', tr('HDMI Inputs')], ['settings', tr('light|Settings')]];
-    for (var b = 0; b < 3; b++) {
-      var r = el('button', 'round' + (b === 2 ? ' last' : ''), buttons);
-      r.style.left = (1596 + 88 * b) + 'px';
+    // VIDAA has no Live TV or HDMI to open: the Store and Settings take the two places on the right.
+    var defs = TV.name === 'vidaa' ? [['store', say('store')], ['settings', tr('light|Settings')]] :
+        [['live_tv', tr('light|Live TV')], ['hdmi', tr('HDMI Inputs')], ['settings', tr('light|Settings')]];
+    for (var b = 0; b < defs.length; b++) {
+      var r = el('button', 'round' + (b === defs.length - 1 ? ' last' : ''), buttons);
+      r.style.left = (1596 + 88 * (3 - defs.length) + 88 * b) + 'px';
       sym(defs[b][0], r);
       el('div', 'tip', r, defs[b][1]);
       hover(r, Z.TOP, 3 + b);
@@ -500,6 +505,10 @@
       t.style.width = tw + 'px';
       t.style.height = th + 'px';
       face(shelf[i], t, wordFit(shelf[i].title, tw, 30));
+      veil(t);
+      var off = TV.name === 'vidaa' && TV.isOff(shelf[i].id);
+      setClass(t, 'off', off);
+      if (off) el('div', 'hint', t, say('useRemote', {app: shelf[i].title}));   // shown while the tile has focus
       hover(t, Z.SHELF, i);
     }
     // More apps than fit: a small arrow inside the glass's edge on each side that has more, where no tile reaches
@@ -552,6 +561,7 @@
       drawerItems.push({label: x.label || tr('Live TV'), symbol: x.symbol, off: !x.connected, run: launcher(x.id, x.label)});
     }
     drawerInputs = drawerItems.length;
+    if (TV.name === 'vidaa') drawerItems.push({label: say('store'), symbol: 'store', run: openStore});
     drawerItems.push({label: tr('All Apps'), symbol: 'apps', run: openApps});
     drawerItems.push({label: tr('Home Settings'), symbol: 'settings', run: openSettings});
     if (TV.canOpenSettings) drawerItems.push({label: tr('TV Settings'), symbol: 'tv_settings', run: tvSettings});
@@ -661,6 +671,9 @@
 
   // MARK: - All Apps
 
+  /** The cells of All Apps: the apps, and on VIDAA a last one that opens the Store. */
+  function gridCount() { return others.length + (TV.name === 'vidaa' ? 1 : 0); }
+
   function renderApps() {
     var sheet = $('apps');
     sheet.firstChild.textContent = tr('All Apps');
@@ -670,9 +683,22 @@
       var r = Math.floor(i / 5), c = i % 5, cell = el('div', 'cell', grid);
       cell.style.left = (130 + c * 340) + 'px';
       cell.style.top = (196 + r * 239) + 'px';
-      face(others[i], el('div', 'face', cell), wordFit(others[i].title, 300, 34));
+      var box = el('div', 'face', cell);
+      face(others[i], box, wordFit(others[i].title, 300, 34));
+      veil(box);
+      setClass(cell, 'off', TV.name === 'vidaa' && TV.isOff(others[i].id));
       el('div', 'label', cell, others[i].title);
       hover(cell, Z.APPS, i);
+    }
+    if (TV.name === 'vidaa') {
+      var n = others.length, more = el('div', 'cell', grid), plate = el('div', 'face', more);
+      more.style.left = (130 + n % 5 * 340) + 'px';
+      more.style.top = (196 + Math.floor(n / 5) * 239) + 'px';
+      paint(plate, '#34343A', '#1A1A1E');
+      setClass(plate, 'store', true);
+      sym('apps', plate, 64);
+      el('div', 'label', more, say('moreInStore'));
+      hover(more, Z.APPS, n);
     }
   }
 
@@ -941,7 +967,10 @@
 
   // MARK: - About this TV: what to quote when reporting a problem, without LG's or Samsung's slow menus
 
+  var aboutInfo = null, testIndex = 0, testing = false;
+
   function renderAbout(info) {
+    aboutInfo = info;
     var box = $('about').firstChild;
     box.innerHTML = '';
     el('div', 'title', box, tr('About this TV'));
@@ -956,6 +985,15 @@
     for (var i = 0; i < rows.length; i++) {
       var row = el('div', 'row', holder), label = el('span', '', row, rows[i][0]);
       fitValue(row, label, el('span', 'value', row, info ? rows[i][1] || tr('Unavailable') : '…'));
+    }
+    if (TV.diagnostics) {
+      // "Testar abrir": ← → pick an app, OK tries every format of argument on it and the diagnostic lists what happened.
+      var names = TV.testApps(), test = el('div', 'row test focus', holder, say('testOpen'));
+      testIndex = Math.max(0, Math.min(testIndex, names.length - 1));
+      var v = el('span', 'value', test);
+      if (testing) v.textContent = '…';
+      else if (!names.length) v.textContent = '—';
+      else { el('span', 'chev', v, '‹'); v.appendChild(document.createTextNode(names[testIndex])); el('span', 'chev', v, '›'); }
     }
     el('div', 'hint', box, tr('Back closes.'));
   }
@@ -974,6 +1012,16 @@
     setClass($('about'), 'open', true);
     updateFocus();
     TV.about(function (info) { if (st.zone === Z.ABOUT) renderAbout(info); });
+  }
+
+  function testOpen() {
+    if (testing || !TV.testApps().length) return;
+    testing = true;
+    renderAbout(aboutInfo);
+    TV.testOpen(testIndex, function () {
+      testing = false;
+      if (st.zone === Z.ABOUT) renderAbout(aboutInfo);
+    });
   }
 
   function closeAbout() {
@@ -1044,10 +1092,55 @@
 
   // MARK: - Opening things
 
-  function launcher(id, name) {
+  /** The cover "Abrindo…" that goes over an app being opened (VIDAA): opacity only, there in the same frame as the key. */
+  function veil(box) {
+    el('div', 't', el('div', 'veil', box));
+  }
+
+  var opening = null, openingTimer = 0;
+
+  function showOpening(node, on) {
+    var v = node && node.querySelector('.veil .t');
+    if (v) {
+      if (on) v.textContent = say('opening');
+      setClass(node, 'opening', on);
+    } else if (on) {
+      toast(say('opening'), 2500);   // a pick or a shortcut: no tile to cover
+    } else if ($('toast').textContent === say('opening')) {
+      hideToast();
+    }
+  }
+
+  function endOpening() {
+    clearTimeout(openingTimer);
+    if (opening) showOpening(opening.node, false);
+    opening = null;
+  }
+
+  /**
+   * Opens an app. On VIDAA it answers the key at once ("Abrindo…"), ignores OK while it is being tried, and when nothing
+   * opens it says to use the remote's own button and dims the app (tv.js keeps that).
+   */
+  function launcher(id, name, node) {
     return function () {
+      if (TV.name !== 'vidaa') {
+        TV.launch(id, null, function (ok) {
+          if (!ok) toast(trf("Couldn't open {app}.", {app: name || id}));
+        });
+        return;
+      }
+      if (opening) return;
+      opening = {node: node};
+      showOpening(node, true);
+      openingTimer = setTimeout(endOpening, 15000);
       TV.launch(id, null, function (ok) {
-        if (!ok) toast(trf("Couldn't open {app}.", {app: name || id}));
+        endOpening();
+        if (ok) return;
+        var onShelf = node && /(^| )tile( |$)/.test(node.className);
+        if (!onShelf) toast(say('openFailed', {app: name || id}));   // a shelf tile says it itself, in place
+        renderShelf();
+        if (st.zone === Z.APPS) { renderApps(); fitLogos($('apps')); }
+        updateFocus();
       });
     };
   }
@@ -1067,6 +1160,7 @@
     switch (st.zone) {
       case Z.TOP:
         if (st.top < 3) return;
+        if (TV.name === 'vidaa') { if (st.top === 3) openStore(); else openSettings(); return; }
         if (st.top === 3) { var live = liveTV(); if (live) launcher(live.id, tr('Live TV'))(); }
         else if (st.top === 4) { st.zone = Z.SHELF; openDrawer(); st.drawer = 1 < drawerInputs ? 1 : 0; updateFocus(); }
         else openSettings();
@@ -1076,13 +1170,14 @@
         if (app) launcher(app.id, app.title)();
         return;
       case Z.SHELF:
-        if (shelf[st.shelf]) launcher(shelf[st.shelf].id, shelf[st.shelf].title)();
+        if (shelf[st.shelf]) launcher(shelf[st.shelf].id, shelf[st.shelf].title, $('tiles').children[st.shelf])();
         return;
       case Z.DRAWER:
         if (drawerItems[st.drawer]) drawerItems[st.drawer].run();
         return;
       case Z.APPS:
-        if (others[st.grid]) launcher(others[st.grid].id, others[st.grid].title)();
+        if (others[st.grid]) launcher(others[st.grid].id, others[st.grid].title, document.querySelectorAll('#apps .face')[st.grid])();
+        else if (TV.name === 'vidaa') openStore();
         return;
       case Z.SETTINGS:
         if (rowsNow[st.row]) { rowsNow[st.row].step(1); if (st.zone === Z.SETTINGS) renderSettings(); }
@@ -1097,7 +1192,7 @@
         activateCity();
         return;
       case Z.ABOUT:
-        closeAbout();
+        if (TV.diagnostics) testOpen(); else closeAbout();
         return;
     }
   }
@@ -1112,11 +1207,12 @@
     var tiles = $('tiles').children, cardNodes = $('cards').children;
     switch (st.zone) {
       case Z.SHELF:
-        if (dx) st.shelf = Math.max(0, Math.min(shelf.length - 1, st.shelf + dx));
-        else if (dy > 0) { openDrawer(); return; }
+        if (dx) {
+          st.shelf = Math.max(0, Math.min(shelf.length - 1, st.shelf + dx));
+        } else if (dy > 0) { openDrawer(); return; }
         else if (dy < 0) {
           if (cards.length) { st.zone = Z.CARDS; st.card = nearest(cardNodes, centerX(tiles[st.shelf])); }
-          else { st.zone = Z.TOP; st.top = st.tab; }
+          else { st.zone = Z.TOP; st.top = TV.name === 'vidaa' && !Data.hasKey() ? 3 : st.tab; }   // no picks without a key: the tabs do nothing, so up goes to the buttons
         }
         break;
       case Z.CARDS:
@@ -1126,7 +1222,7 @@
         break;
       case Z.TOP:
         if (dx) {
-          st.top = Math.max(0, Math.min(5, st.top + dx));
+          st.top = Math.max(0, Math.min(2 + $('buttons').children.length, st.top + dx));
           if (st.top < 3) selectTab(st.top);   // as on Apple TV: focusing a tab selects it
         } else if (dy > 0) {
           if (cards.length) { st.zone = Z.CARDS; st.card = Math.min(cards.length - 1, st.top < 3 ? 0 : cards.length - 1); }
@@ -1139,13 +1235,19 @@
         break;
       case Z.APPS:
         var g = st.grid + dx + dy * 5;
-        if (g >= 0 && g < others.length && (dx === 0 || Math.floor(g / 5) === Math.floor(st.grid / 5))) st.grid = g;
+        if (g >= 0 && g < gridCount() && (dx === 0 || Math.floor(g / 5) === Math.floor(st.grid / 5))) st.grid = g;
         break;
       case Z.SETTINGS:
         if (dy) st.row = Math.max(0, Math.min(rowsNow.length - 1, st.row + dy));
         else if (dx && rowsNow[st.row]) {
           var r = rowsNow[st.row];
           if (r.value !== '›') { r.step(dx); if (st.zone === Z.SETTINGS) renderSettings(); }
+        }
+        break;
+      case Z.ABOUT:
+        if (dx && TV.diagnostics && !testing && TV.testApps().length) {
+          testIndex = (testIndex + dx + TV.testApps().length) % TV.testApps().length;
+          renderAbout(aboutInfo);
         }
         break;
       case Z.EDIT:
@@ -1176,8 +1278,16 @@
     if (sheetOpen()) { closeSheets(); return; }
     if (st.zone === Z.DRAWER) { closeDrawer(); return; }
     if (st.zone !== Z.SHELF && shelf.length) { st.zone = Z.SHELF; updateFocus(); return; }
+    // VIDAA only: leaving asks twice, so a stray Back doesn't drop the person out of the app (the toast and the window match).
+    if (TV.name === 'vidaa') {
+      var now = Date.now();
+      if (now - backAt > BACK_WINDOW) { backAt = now; toast(say('backAgain'), BACK_WINDOW); return; }
+      hideToast();
+    }
     TV.back();
   }
+
+  var backAt = 0, BACK_WINDOW = 2500;
 
   /** The pointer focuses what it's over (the Magic Remote, or a mouse when previewing). */
   function hover(node, zone, index) {
@@ -1204,12 +1314,17 @@
   // MARK: - Toast
 
   var toastTimer = 0;
-  function toast(text) {
+  function toast(text, ms) {
     var t = $('toast');
     t.textContent = text;
     setClass(t, 'on', true);
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(function () { setClass(t, 'on', false); }, 6000);
+    toastTimer = setTimeout(function () { setClass(t, 'on', false); }, ms || 6000);
+  }
+
+  function hideToast() {
+    clearTimeout(toastTimer);
+    setClass($('toast'), 'on', false);
   }
 
   // MARK: - Night, clock, screensaver
@@ -1297,14 +1412,17 @@
 
   document.addEventListener('keydown', function (e) {
     var k = e.keyCode;
+    if (storeOpen()) return;   // the Store takes the keys while it is up
     if (poke(k === TV.keys.ok)) { e.preventDefault(); return; }   // the first press only wakes the screen (or OK watches)
     if (typing(k)) return;
+    var field = document.activeElement;
+    if (k === 8 && field && /^(input|textarea)$/i.test(field.tagName)) return;   // in a text field 8 erases, it is never Back
     if (k === TV.keys.left) move(-1, 0);
     else if (k === TV.keys.right) move(1, 0);
     else if (k === TV.keys.up) move(0, -1);
     else if (k === TV.keys.down) move(0, 1);
     else if (k === TV.keys.ok) activate();
-    else if (k === TV.keys.back || k === 27 || k === 8) back();
+    else if (k === TV.keys.back || k === 27 || k === 8 || (k === 10009 && TV.name === 'vidaa')) back();
     else return;
     e.preventDefault();
   });
@@ -1322,6 +1440,104 @@
     else if (k === TV.keys.up || k === TV.keys.down) { closeCityField(); move(0, k === TV.keys.up ? -1 : 1); }
     else return true;   // typed into the field
     return true;
+  }
+
+  // MARK: - The Store (VIDAA only): store/ is fetched the first time it is needed, or 2 s after the start
+
+  var storeState = 0, storeWaiting = [], storeStyled = false;   // 0 not asked, 1 loading, 2 ready, -1 failed
+
+  function storeOpen() { return !!(window.FMTVStore && window.FMTVStore.isOpen && window.FMTVStore.isOpen()); }
+
+  /** The Store's own texts (pt and en) for TV.say, unless something already set them. */
+  function loadStrings(version) {
+    if (window.FMTV_STRINGS) return;
+    var x = new XMLHttpRequest();
+    x.onreadystatechange = function () {
+      if (x.readyState !== 4) return;
+      try { if (!window.FMTV_STRINGS) window.FMTV_STRINGS = JSON.parse(x.responseText); } catch (e) {}
+    };
+    try { x.open('GET', 'store/strings.json' + version, true); x.send(); } catch (e) {}
+  }
+
+  function loadStore(done) {
+    if (window.FMTVStore) { done(true); return; }
+    storeWaiting.push(done);
+    if (storeState === 1) return;
+    storeState = 1;
+    var version = '?v=' + encodeURIComponent(CONFIG.buildVersion || CONFIG.appVersion || '');
+    if (!storeStyled) {
+      storeStyled = true;
+      var css = el('link');
+      css.rel = 'stylesheet';
+      css.href = 'store/store.css' + version;
+      document.head.appendChild(css);
+    }
+    loadStrings(version);
+    function script(src, next) {
+      var tag = el('script');
+      tag.onload = function () { next(true); };
+      tag.onerror = function () { next(false); };
+      tag.src = src + version;
+      document.head.appendChild(tag);
+    }
+    function finish(ok) {
+      storeState = ok ? 2 : -1;
+      var waiting = storeWaiting;
+      storeWaiting = [];
+      for (var i = 0; i < waiting.length; i++) waiting[i](ok);
+    }
+    function main() { script('store/store.js', function (ok) { finish(ok && !!window.FMTVStore); }); }
+    if (window.FMTVRegistry) main(); else script('store/registry.js', main);   // the Store reads and writes the list through it
+  }
+
+  /** The id an app of the Store has in the TV's list (its entry is fmtv_<id>). */
+  function listId(id) { return String(id).indexOf('fmtv_') === 0 ? String(id) : 'fmtv_' + id; }
+
+  function pinned(id) {
+    for (var i = 0; i < shelf.length; i++) if (shelf[i].id === listId(id) || shelf[i].id === id) return true;
+    return false;
+  }
+
+  /** "Pôr na prateleira": the TV's list is read again (the app is in it now), then the app joins the shelf. */
+  function pin(app) {
+    loadApps(function () {
+      var id = listId(app.id), found = null;
+      for (var i = 0; i < apps.length; i++) if (apps[i].id === id) found = apps[i];
+      if (!found) return;
+      var ids = shelf.map(function (a) { return a.id; });
+      if (ids.indexOf(id) < 0) ids.push(id);
+      Prefs.set('shelf', ids);
+      pickShelf();
+      renderShelf();
+      updateFocus();
+    });
+  }
+
+  var storeFrom = Z.SHELF, storeAsked = false;
+
+  function leaveStore() {
+    st.zone = storeFrom;
+    updateFocus();
+  }
+
+  function openStore() {
+    if (TV.name !== 'vidaa' || storeAsked || storeOpen()) return;
+    if (sheetOpen()) closeSheets();
+    storeFrom = st.zone;
+    storeAsked = true;
+    if (storeState !== 2) toast(say('storeLoading'), 2500);
+    loadStore(function (ok) {
+      storeAsked = false;
+      if (!ok) { toast(say('storeLoading'), 3000); return; }
+      hideToast();
+      window.FMTVStore.open({
+        onClose: leaveStore,
+        focusRestore: leaveStore,
+        launch: function (app, done) { TV.launchStoreApp(app, done); },
+        pin: pin,
+        pinned: pinned
+      });
+    });
   }
 
   // MARK: - Start
@@ -1413,6 +1629,7 @@
     restInDrawer();
     Data.refresh();
   });
+  if (TV.name === 'vidaa') setTimeout(function () { loadStore(function () {}); }, 2000);
   setInterval(function () {
     checkNight();
     Data.refresh();
@@ -1421,5 +1638,5 @@
   }, 30000);
 
   // For the browser preview and tests.
-  window.FreeMyTV = {state: st, move: move, activate: activate, back: back, showSaver: showSaver, hideSaver: hideSaver, toast: toast};
+  window.FreeMyTV = {state: st, move: move, activate: activate, back: back, showSaver: showSaver, hideSaver: hideSaver, toast: toast, openStore: openStore};
 })();

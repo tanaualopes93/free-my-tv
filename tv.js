@@ -11,7 +11,16 @@ var TV = (function () {
 
   var webos = typeof window.PalmServiceBridge !== 'undefined';
   var samsung = !webos && typeof window.tizen !== 'undefined' && !!window.tizen.application;
-  var vidaa = !webos && !samsung && (typeof window.Hisense_GetModelName === 'function' || /VIDAA/i.test(navigator.userAgent));
+  // VIDAA's browser says nothing in its user agent, so it is told by a flag in the address (?tv=vidaa), by the Hisense_*
+  // calls, or by the Opera OMI bridge its apps get. What matched is kept for About.
+  var vidaaWhy = [];
+  if (!webos && !samsung) {
+    if (/[?&]tv=vidaa(&|$)/.test(window.location.search)) vidaaWhy.push('?tv=vidaa');
+    if (hisenseCalls()) vidaaWhy.push('Hisense_*');
+    if (typeof window.omi_platform !== 'undefined' || typeof window.opera_omi !== 'undefined') vidaaWhy.push('omi');
+    if (/VIDAA/i.test(navigator.userAgent)) vidaaWhy.push('user agent');
+  }
+  var vidaa = vidaaWhy.length > 0;
   var calls = [];   // a bridge is collected if nothing holds it before its reply arrives
   var tizen2 = samsung && /Tizen 2\./.test(navigator.userAgent);
   // Tizen 2 (2016 TVs, WebKit 538) repaints every shadow on every frame of a focus animation: home.css turns them off.
@@ -20,6 +29,13 @@ var TV = (function () {
   // webOS 5+ and Tizen 5+, where 1.5 GB TVs at a ratio of 1 run smoothly.
   if (tizen2 || ((webos || samsung || vidaa) && navigator.deviceMemory && navigator.deviceMemory <= 1 && (window.devicePixelRatio || 1) > 1)) {
     document.documentElement.className += ' lite';
+  }
+
+  function hisenseCalls() {
+    try {
+      for (var k in window) if (/^Hisense_/.test(k) && typeof window[k] === 'function') return true;
+    } catch (e) {}
+    return typeof window.Hisense_GetModelName === 'function';
   }
 
   /** One Luna call; done(result) with null on failure. */
@@ -345,25 +361,35 @@ var TV = (function () {
 
   // MARK: - Hisense VIDAA
 
-  // VIDAA has no public reference for listing or opening apps: Hisense_getInstalledApps, Hisense_launchAppViaName and
-  // Hisense_launchAppViaUri exist on its browser (found by listing window), with arguments nobody has published. So
-  // the list falls back to the usual VIDAA apps, opening one tries each call in turn and counts only when this page
-  // goes to the background, and About shows the calls' own source, to set them right for a firmware.
-  // [id, title, logo, color, web address]: the address only where the app is a web page known to work on VIDAA.
+  // VIDAA has no public reference for listing or opening apps: Hisense_launchAppViaName and Hisense_launchAppViaUri
+  // exist on its browser (found by listing window), with arguments nobody has published. So the shelf starts from the
+  // apps of the remote's own buttons and the TV's list wins over it (address, icon); opening tries each call in turn and
+  // counts only when this page goes to the background; an app nothing opens stays dimmed, and the way that worked is
+  // remembered. About shows what is there, to set the calls right for a firmware.
+  // [id, title, logo, color]: no web address is guessed, one comes only from the TV's own list.
   var VIDAA_APPS = [
-    ['netflix', 'Netflix', 'icons/netflix.svg'], ['youtube', 'YouTube', 'icons/youtube.png', '', 'https://www.youtube.com/tv'],
-    ['prime', 'Prime Video', 'icons/prime.png'], ['disney', 'Disney+', '', '#1838C8'], ['max', 'Max', 'icons/max.svg'],
-    ['globoplay', 'Globoplay', '', '#FF5A1F'], ['appletv', 'Apple TV', '', '#B8BCC6'], ['spotify', 'Spotify', 'icons/spotify.svg'],
-    ['deezer', 'Deezer', 'icons/deezer.svg'], ['plutotv', 'Pluto TV', '', '#2D2D2D'],
-    ['twitch', 'Twitch', '', '#9146FF', 'https://hisense.tv.twitch.tv/'], ['vevo', 'Vevo', '', '#E5004C', 'https://hisense.vevo.com'],
-    ['jellyfin', 'Jellyfin', 'icons/jellyfin.svg']
+    ['netflix', 'Netflix', 'icons/netflix.svg'], ['youtube', 'YouTube', 'icons/youtube.png'],
+    ['prime', 'Prime Video', 'icons/prime.png'], ['globoplay', 'Globoplay', '', '#FF5A1F'],
+    ['deezer', 'Deezer', 'icons/deezer.svg'], ['kids', 'Kids', '', '#FF5A5F'],
+    ['plex', 'Plex', '', '#E5A00D'], ['clarovideo', 'Claro vídeo', '', '#DA291C'],
+    ['plutotv', 'Pluto TV', '', '#2D2D2D'], ['vidaatv', 'VIDAA TV', '', '#12A7A0'], ['fifaplus', 'FIFA+', '', '#2B3F8C']
   ];
 
-  // The web apps' list on the TV (the one vidaahub.com's installs write), read through HiUtils_createRequest.
+  // The web apps' list on the TV, read through HiUtils_createRequest (read only: this file never writes it).
   var VIDAA_REGISTRY = 'websdk/Appinfo.json';
 
+  var KEY_WAYS = 'fmtv.vidaa.ways', KEY_FAILED = 'fmtv.vidaa.failed', KEY_LOG = 'fmtv.vidaa.log', KEY_PENDING = 'fmtv.vidaa.pending';
+
+  function recall(key, fallback) {
+    try { return JSON.parse(localStorage.getItem(key)) || fallback; } catch (e) { return fallback; }
+  }
+
+  function keep(key, value) {
+    try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) {}
+  }
+
   var vidaaList = [];   // what apps() last listed, with the addresses launch() needs
-  var vidaaLog = [];    // the last attempts to open something, for About
+  var vidaaLog = vidaa ? recall(KEY_LOG, []) : [];   // the last attempts to open something, for About (kept: opening may end the page)
 
   function has(name) {
     try { return typeof window[name] === 'function'; } catch (e) { return false; }
@@ -372,6 +398,28 @@ var TV = (function () {
   function note(text) {
     vidaaLog.push(text);
     if (vidaaLog.length > 6) vidaaLog.shift();
+    if (vidaa) keep(KEY_LOG, vidaaLog);
+  }
+
+  // A call that was made and never came back to this page: the page was most likely taken to the background and ended.
+  var vidaaPending = vidaa ? recall(KEY_PENDING, null) : null;
+  if (vidaaPending) {
+    note(vidaaPending.app + ': ' + vidaaPending.way + ' provavelmente abriu (a página recarregou)');
+    keep(KEY_PENDING, null);
+  }
+
+  function trim(s) { return String(s === undefined || s === null ? '' : s).replace(/^\s+|\s+$/g, ''); }
+
+  /** An absolute http(s) address, else '': the only thing location may be pointed at. */
+  function webUrl(u) {
+    u = trim(u);
+    return /^https?:\/\/[^\s]+$/i.test(u) ? u : '';
+  }
+
+  /** A name to compare by: lowercase, no accents, letters and digits only ("Claro vídeo" = "claro video", "AppleTV+" = "appletv"). */
+  function norm(s) {
+    return String(s).toLowerCase().replace(/[áàâãä]/g, 'a').replace(/[éèêë]/g, 'e').replace(/[íìîï]/g, 'i')
+        .replace(/[óòôõö]/g, 'o').replace(/[úùûü]/g, 'u').replace(/ç/g, 'c').replace(/[^a-z0-9]/g, '');
   }
 
   /** One app from the TV's own lists, whichever field names its firmware uses; null without a name. */
@@ -379,10 +427,14 @@ var TV = (function () {
     if (!a || typeof a !== 'object') return null;
     var title = a.AppName || a.appName || a.Title || a.title || a.name || a.Name || '';
     if (!title || /free my tv/i.test(title)) return null;
+    // The list holds web apps (StoreType custom or hisense) and the TV's browser, whose address is the word "browser".
+    var raw = trim(a.URL || a.url || a.appUrl || a.AppUrl || a.StartCommand), type = trim(a.StoreType).toLowerCase();
+    var browser = type === 'browser' || raw.toLowerCase() === 'browser';
     return {
       id: String(a.Id || a.appId || a.AppId || a.id || title), title: String(title),
       icon: a.IconURL || a.Icon_96 || a.iconUrl || a.icon || a.Image || a.Thumb || '', color: '',
-      url: a.URL || a.url || a.appUrl || a.AppUrl || a.StartCommand || ''
+      url: browser ? '' : webUrl(raw), rawUrl: raw, type: browser ? 'browser' : type,
+      listId: String(a.Id || a.appId || a.AppId || a.id || ''), appName: ''
     };
   }
 
@@ -420,83 +472,203 @@ var TV = (function () {
     }
   }
 
-  /** The web apps installed through vidaahub.com, from the TV's registry file. */
-  function vidaaRegistry() {
-    if (!has('HiUtils_createRequest')) return [];
+  /** The TV's list file, read only: {ret, bytes, apps: [app]}; ret is null when there is no reader. */
+  function vidaaRead() {
+    if (!has('HiUtils_createRequest')) return {ret: null, bytes: 0, apps: []};
     try {
       var res = window.HiUtils_createRequest('fileRead', {path: VIDAA_REGISTRY, mode: 6});
-      return res && res.ret ? vidaaListOf(res.msg) : [];
+      var text = res && res.ret && typeof res.msg === 'string' ? res.msg : '';
+      var apps = [], list = vidaaListOf(text);
+      for (var i = 0; i < list.length; i++) {
+        var a = vidaaApp(list[i]);
+        if (a) apps.push(a);
+      }
+      return {ret: !!(res && res.ret), bytes: text.length, apps: apps, count: list.length};
     } catch (e) {
-      return [];
+      return {ret: false, bytes: 0, apps: [], count: 0};
     }
   }
 
+  /**
+   * The shelf's apps: the remote's buttons, with the TV's own entry winning where it has the same app (address, icon,
+   * the name its launcher knows); then what the list holds beyond them. The TV's browser never gets an address.
+   */
   function vidaaApps(done) {
     vidaaInstalled(function (installed) {
-      var out = installed || [], seen = {};
-      for (var i = 0; i < out.length; i++) seen[out[i].title.toLowerCase()] = true;
-      function add(a) {
-        if (!a || seen[a.title.toLowerCase()]) return;
-        seen[a.title.toLowerCase()] = true;
-        out.push(a);
-      }
-      if (!installed) {
-        VIDAA_APPS.forEach(function (k) { add({id: k[0], title: k[1], icon: k[2] || '', color: k[3] || '', url: k[4] || ''}); });
-      }
-      var registry = vidaaRegistry();
-      for (var j = 0; j < registry.length; j++) add(vidaaApp(registry[j]));
+      var base = [], byName = {}, extras = [], browsers = [], seen = {};
+      VIDAA_APPS.forEach(function (k) {
+        var b = {id: k[0], title: k[1], icon: k[2] || '', color: k[3] || '', url: '', rawUrl: '', type: '', listId: '', appName: ''};
+        base.push(b);
+        byName[norm(b.title)] = b;
+      });
+      vidaaRead().apps.concat(installed || []).forEach(function (a) {
+        var n = norm(a.title);
+        if (!n || seen[n]) return;
+        seen[n] = true;
+        var b = byName[n];
+        if (b) {
+          b.appName = a.title;
+          b.url = a.url;
+          b.rawUrl = a.rawUrl;
+          b.type = a.type;
+          b.listId = a.listId;
+          if (a.icon) b.icon = a.icon;
+        } else if (a.type === 'browser') {
+          browsers.push(a);
+        } else {
+          extras.push(a);
+        }
+      });
+      var out = base.slice(0, 4).concat(extras, base.slice(4), browsers);
       vidaaList = out;
       done(out.map(function (a) { return {id: a.id, title: a.title, icon: a.icon, color: a.color}; }));
     });
   }
 
+  // How a call can be made: [the Hisense function, the argument for an app ('' when it has none for this way].
+  var WAYS = {
+    'name:title': ['Hisense_launchAppViaName', function (a) { return a.appName || a.title; }],
+    'name:id': ['Hisense_launchAppViaName', function (a) { return a.listId; }],
+    'name:json': ['Hisense_launchAppViaName', function (a) { return JSON.stringify({appName: a.appName || a.title}); }],
+    'name:object': ['Hisense_launchAppViaName', function (a) { return {appName: a.appName || a.title}; }],
+    'name:json-id': ['Hisense_launchAppViaName', function (a) {
+      return a.listId ? JSON.stringify({Id: a.listId, AppName: a.appName || a.title}) : '';
+    }],
+    'uri:url': ['Hisense_launchAppViaUri', function (a) { return a.url; }],
+    'uri:raw': ['Hisense_launchAppViaUri', function (a) { return a.rawUrl; }]
+  };
+  var LAUNCH_WAYS = ['name:title', 'uri:url'];
+  var TEST_WAYS = ['name:title', 'name:id', 'name:json', 'name:object', 'name:json-id', 'uri:url', 'uri:raw'];
+
   /**
-   * Opens an app: by name, then by address, then (a web app) by going to its page. A call counts only when this page
-   * goes to the background within 2.5 s: VIDAA's calls answer nothing, and a wrong argument is silently ignored.
+   * Makes each call in turn until one takes this page to the background (VIDAA's calls answer nothing, and a wrong
+   * argument is silently ignored); done(the way that did, or ''). Only visibilitychange and document.hidden count:
+   * blur also fires on a TV's own overlays.
    */
+  function tryWays(app, ways, wait, done) {
+    var i = 0, tried = {}, gone = false;
+    function away() { if (document.hidden) gone = true; }
+    document.addEventListener('visibilitychange', away);
+    function finish(way) {
+      document.removeEventListener('visibilitychange', away);
+      keep(KEY_PENDING, null);
+      done(way);
+    }
+    function attempt(name, call, arg) {
+      var threw = '', waited = 0;
+      gone = false;
+      keep(KEY_PENDING, {app: app.title, way: name});
+      try { window[call](arg); } catch (e) { threw = ' (' + e.message + ')'; }
+      var timer = setInterval(function () {
+        waited += 100;
+        if (gone || document.hidden) {
+          clearInterval(timer);
+          note(app.title + ': ' + name + ' abriu');
+          finish(name);
+        } else if (waited >= wait || threw) {
+          clearInterval(timer);
+          note(app.title + ': ' + name + ' nada' + threw);
+          next();
+        }
+      }, 100);
+    }
+    function next() {
+      while (i < ways.length) {
+        var name = ways[i++], def = WAYS[name];
+        if (!def || !has(def[0])) continue;
+        var arg = def[1](app);
+        if (arg === '' || arg === null || arg === undefined) continue;
+        var sig = def[0] + JSON.stringify(arg);
+        if (tried[sig]) continue;
+        tried[sig] = true;
+        attempt(name, def[0], arg);
+        return;
+      }
+      finish('');
+    }
+    next();
+  }
+
+  /** The way that opened an app is remembered (and the app is no longer dimmed). */
+  function remember(id, way) {
+    var ways = recall(KEY_WAYS, {}), failed = recall(KEY_FAILED, {});
+    ways[id] = way;
+    delete failed[id];
+    keep(KEY_WAYS, ways);
+    keep(KEY_FAILED, failed);
+  }
+
+  function forget(id, off) {
+    var failed = recall(KEY_FAILED, {});
+    if (off) failed[id] = 1; else delete failed[id];
+    keep(KEY_FAILED, failed);
+  }
+
+  /**
+   * Opens an app: the remembered way first, then by name, then by address, and last (a web app with an absolute
+   * address, never the TV's browser) by going to its page. Nothing worked: the app stays dimmed.
+   */
+  function launchApp(app, done) {
+    var ways = recall(KEY_WAYS, {}), order = ways[app.id] ? [ways[app.id]].concat(LAUNCH_WAYS) : LAUNCH_WAYS;
+    tryWays(app, order, 2000, function (way) {
+      if (way) { remember(app.id, way); if (done) done(true); return; }
+      if (app.url && app.type !== 'browser') {
+        note(app.title + ': location ' + app.url);
+        if (done) done(true);
+        window.location.href = app.url;
+        return;
+      }
+      note(app.title + ': nada o abriu');
+      forget(app.id, true);
+      if (done) done(false);
+    });
+  }
+
   function vidaaLaunch(id, done) {
     var app = null;
     for (var i = 0; i < vidaaList.length; i++) if (vidaaList[i].id === id) app = vidaaList[i];
     if (!app) { if (done) done(false); return; }
-    var tries = [];
-    if (has('Hisense_launchAppViaName')) tries.push(['Hisense_launchAppViaName', function () { window.Hisense_launchAppViaName(app.title); }]);
-    if (app.url && has('Hisense_launchAppViaUri')) tries.push(['Hisense_launchAppViaUri', function () { window.Hisense_launchAppViaUri(app.url); }]);
-    var left = false;
-    function away() { left = true; }
-    document.addEventListener('visibilitychange', away);
-    window.addEventListener('pagehide', away);
-    window.addEventListener('blur', away);
-    function stop(ok) {
-      document.removeEventListener('visibilitychange', away);
-      window.removeEventListener('pagehide', away);
-      window.removeEventListener('blur', away);
-      if (done) done(ok);
+    launchApp(app, done);
+  }
+
+  /** The Store's app ({id, name, url}) once it is in the TV's list: found there by its entry, else tried as it is. */
+  function vidaaLaunchStore(a, done) {
+    var id = String(a && a.id || ''), listId = id.indexOf('fmtv_') === 0 ? id : 'fmtv_' + id, app = null;
+    for (var i = 0; i < vidaaList.length; i++) if (vidaaList[i].listId === listId || vidaaList[i].id === listId) app = vidaaList[i];
+    if (!app) {
+      app = {id: listId, title: String(a && (a.name || a.title) || id), icon: '', color: '', url: webUrl(a && a.url), rawUrl: '',
+        type: '', listId: listId, appName: ''};
     }
-    function next(n) {
-      if (n >= tries.length) {
-        if (!app.url) { note(app.title + ': nothing opened it'); stop(false); return; }
-        note(app.title + ': location ' + app.url);
-        stop(true);
-        window.location.href = app.url;
-        return;
-      }
-      left = false;
-      var threw = '';
-      try { tries[n][1](); } catch (e) { threw = ' (' + e.message + ')'; }
-      var waited = 0, timer = setInterval(function () {
-        waited += 100;
-        if (left || document.hidden) {
-          clearInterval(timer);
-          note(app.title + ': ' + tries[n][0] + ' opened it');
-          stop(true);
-        } else if (waited >= 2500 || threw) {
-          clearInterval(timer);
-          note(app.title + ': ' + tries[n][0] + ' did nothing' + threw);
-          next(n + 1);
-        }
-      }, 100);
-    }
-    next(0);
+    launchApp(app, done);
+  }
+
+  /** Whether an app was tried and nothing opened it (it stays dimmed until something does). */
+  function vidaaOff(id) {
+    return !!recall(KEY_FAILED, {})[id];
+  }
+
+  /** Apps "Testar abrir" can try, by name. */
+  function testApps() {
+    return vidaaList.map(function (a) { return a.title; });
+  }
+
+  /** Tries every format of argument for one app; done(the way that opened it, or ''). The way is remembered. */
+  function testOpen(index, done) {
+    var app = vidaaList[index];
+    if (!app) { if (done) done(''); return; }
+    note('teste: ' + app.title);
+    tryWays(app, TEST_WAYS, 2500, function (way) {
+      if (way) remember(app.id, way); else note(app.title + ': nenhum formato abriu');
+      if (done) done(way);
+    });
+  }
+
+  var keylog = [];   // the last keys, for About: the key code beside the name the TV gives it
+  if (!webos && !samsung) {
+    document.addEventListener('keydown', function (e) {
+      keylog.push(e.keyCode + ' ' + (e.key || '?'));
+      if (keylog.length > 5) keylog.shift();
+    }, true);
   }
 
   function vidaaCall(name) {
@@ -504,20 +676,66 @@ var TV = (function () {
     try { return String(window[name]() || ''); } catch (e) { return ''; }
   }
 
-  /** What About shows on VIDAA: whether each call exists and the start of its source, then the last attempts. */
+  function yes(on) { return on ? 'sim' : 'não'; }
+
+  /**
+   * What About shows on VIDAA, in lines: the build, why this is VIDAA, a read of the TV's list (read only), which calls
+   * exist, the last keys, the screen, then the last attempts to open something. One photo of it sets the rest right.
+   */
   function diagnostics() {
-    var names = ['Hisense_launchAppViaName', 'Hisense_launchAppViaUri', 'Hisense_StartApp', 'Hisense_getInstalledApps',
-      'Hisense_Exit', 'Hisense_CloseApp', 'HiUtils_createRequest'];
-    var out = [];
-    for (var i = 0; i < names.length; i++) {
-      var source = '';
-      try { source = has(names[i]) ? String(window[names[i]]).replace(/\s+/g, ' ').slice(0, 240) : 'missing'; } catch (e) { source = e.message; }
-      out.push(names[i] + ': ' + source);
-    }
+    var cfg = window.CONFIG || {}, read = vidaaRead();
     var omi = window.omi_platform || window.opera_omi;
-    out.push('omi_platform.sendPlatformMessage: ' + (omi && typeof omi.sendPlatformMessage === 'function' ? 'yes' : 'missing'));
-    out.push('Window: ' + window.innerWidth + ' × ' + window.innerHeight + ' · ' + navigator.userAgent);
-    return out.concat(vidaaLog);
+    var chrome = /Chrome\/([\d.]+)/.exec(navigator.userAgent);
+    var out = [
+      'Build ' + (cfg.buildVersion || cfg.appVersion || '—') + (chrome ? ' · Chrome ' + chrome[1].split('.')[0] : ''),
+      'Detecção: ' + (vidaaWhy.length ? vidaaWhy.join(' + ') : 'nenhuma (simulador)'),
+      'Lista: ' + (read.ret === null ? 'sem leitor' : 'ret ' + read.ret + ' · ' + read.bytes + ' bytes · ' + (read.count || 0) + ' apps'),
+      'launchAppViaName ' + yes(has('Hisense_launchAppViaName')) + ' · launchAppViaUri ' + yes(has('Hisense_launchAppViaUri')),
+      'StartApp ' + yes(has('Hisense_StartApp')) + ' · getInstalledApps ' + yes(has('Hisense_getInstalledApps')),
+      'Exit ' + yes(has('Hisense_Exit')) + ' · CloseApp ' + yes(has('Hisense_CloseApp')) +
+          ' · HiUtils ' + yes(has('HiUtils_createRequest')) + ' · omi ' + yes(omi && typeof omi.sendPlatformMessage === 'function'),
+      'Teclas: ' + (keylog.join('   ') || '—'),
+      'Tela ' + (window.screen ? window.screen.width + '×' + window.screen.height : '?') + ' · janela ' + window.innerWidth + '×' +
+          window.innerHeight + ' · DPR ' + (window.devicePixelRatio || 1) + ' · memória ' + (navigator.deviceMemory || '?'),
+      'lite ' + yes(/(^|\s)lite(\s|$)/.test(document.documentElement.className)) + ' · serviceWorker ' + yes('serviceWorker' in navigator)
+    ];
+    return out.concat(vidaaLog.map(function (line) { return '› ' + line; }));
+  }
+
+  // MARK: - Text only the VIDAA build shows (window.FMTV_STRINGS, from vidaa/store/strings.json; Portuguese and English here as a reserve)
+
+  var SAY = {
+    pt: {
+      opening: 'Abrindo…', openFailed: 'Não consegui abrir o {app}. Use o botão {app} do controle.',
+      useRemote: 'Use o botão {app} do controle', backAgain: 'Aperte Voltar de novo para sair', store: 'Loja',
+      moreInStore: 'Mais apps na Loja', storeLoading: 'A Loja ainda não carregou. Aguarde um instante.', testOpen: 'Testar abrir'
+    },
+    en: {
+      opening: 'Opening…', openFailed: "Couldn't open {app}. Use the {app} button on your remote.",
+      useRemote: 'Use the {app} button on your remote', backAgain: 'Press Back again to exit', store: 'Store',
+      moreInStore: 'More apps in the Store', storeLoading: 'The Store has not loaded yet. Wait a moment.', testOpen: 'Test opening'
+    }
+  };
+
+  /** FMTV_STRINGS may be {pt: {key: text}} or {key: {pt: text}}; the text of this language, else English, else the reserve. */
+  function sayFrom(table, lang, key) {
+    if (!table || typeof table !== 'object') return null;
+    var byLang = table[lang], byKey = table[key];
+    if (byLang && typeof byLang === 'object' && typeof byLang[key] === 'string') return byLang[key];
+    if (typeof byKey === 'string') return byKey;
+    if (byKey && typeof byKey === 'object' && typeof byKey[lang] === 'string') return byKey[lang];
+    return null;
+  }
+
+  // The names strings.json gives the same texts.
+  var SAY_FILE = {openFailed: 'open_fail', useRemote: 'shelf_no_path', store: 'store_title', backAgain: 'back_again'};
+
+  function say(key, vars) {
+    var lang = typeof I18N !== 'undefined' && I18N.lang ? I18N.lang : 'en';
+    var file = SAY_FILE[key] || key;
+    var text = sayFrom(window.FMTV_STRINGS, lang, file) || sayFrom(window.FMTV_STRINGS, 'en', file) ||
+        (SAY[lang] && SAY[lang][key]) || SAY.en[key] || SAY.pt[key] || key;
+    return text.replace(/\{(\w+)\}/g, function (all, name) { return vars && vars[name] !== undefined ? vars[name] : all; });
   }
 
   // MARK: - About this TV
@@ -715,8 +933,24 @@ var TV = (function () {
     /** The TV's model, firmware, system, IP address and this app's version, for About this TV. */
     about: about,
 
-    /** VIDAA: lines for About, to set the Hisense calls right for a firmware; null elsewhere. */
-    diagnostics: vidaa ? diagnostics : null,
+    /** Lines for About on a TV that isn't LG or Samsung (VIDAA, or the preview), to set the Hisense calls right; null elsewhere. */
+    diagnostics: !webos && !samsung ? diagnostics : null,
+
+    /** VIDAA's "Testar abrir": the apps it can try by name, and trying every format of argument for one; done(way or ''). */
+    testApps: testApps,
+    testOpen: testOpen,
+
+    /** VIDAA: whether nothing has opened this app yet (it stays dimmed), and opening the Store's apps by their entry. */
+    isOff: function (id) { return vidaa && vidaaOff(id); },
+    launchStoreApp: function (app, done) {
+      if (vidaa) vidaaLaunchStore(app, done); else if (done) done(false);
+    },
+
+    /** Text only the VIDAA build shows, in the viewer's language (window.FMTV_STRINGS, else the reserve here). */
+    say: say,
+
+    /** Why this TV counts as VIDAA ('' when it doesn't). */
+    why: vidaaWhy.join(' + '),
 
     /** LG: keeps the TV's screensaver away while ours will take over (`hold` says when). */
     holdScreenSaver: holdScreenSaver,

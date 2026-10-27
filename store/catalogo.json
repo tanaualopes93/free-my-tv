@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "updated": "2026-10-26",
+  "categories": [
+    { "id": "destaques", "name": { "pt": "Destaques", "en": "Featured" }, "order": 1 },
+    { "id": "iptv", "name": { "pt": "IPTV", "en": "IPTV" }, "order": 2 },
+    { "id": "video-musica", "name": { "pt": "Vídeo e música", "en": "Video and music" }, "order": 3 }
+  ],
+  "apps": [
+    {
+      "id": "twitch",
+      "name": "Twitch",
+      "url": "https://hisense.tv.twitch.tv/",
+      "icon": "icons/twitch.png",
+      "color": "#9146FF",
+      "category": "video-musica",
+      "desc": {
+        "pt": "Transmissões ao vivo de jogos, música e bate-papo. O app oficial da Twitch para TVs Hisense.",
+        "en": "Live streams of games, music and talk. The official Twitch app for Hisense TVs."
+      },
+      "site": "https://www.twitch.tv/",
+      "paid": "free",
+      "needs": ["Conta Twitch (opcional para assistir)"],
+      "http": false,
+      "featured": true,
+      "order": 1
+    },
+    {
+      "id": "emby",
+      "name": "Emby",
+      "url": "https://tv.emby.media/",
+      "icon": "icons/emby.png",
+      "color": "#52B54B",
+      "category": "video-musica",
+      "desc": {
+        "pt": "Toca os filmes, séries e músicas do seu próprio servidor Emby. Precisa de um servidor seu com https.",
+        "en": "Plays the movies, shows and music from your own Emby server. Needs your own server with https."
+      },
+      "site": "https://emby.media/",
+      "paid": "freemium",
+      "needs": ["Servidor Emby seu, com endereço https"],
+      "http": false,
+      "featured": true,
+      "order": 2
+    }
+  ]
+}
