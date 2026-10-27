@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Store harness</title>
+<!--
+  Opens the Store alone on a 1920 x 1080 stage. Serve the project root over http and open
+  /vidaa/tests/store-harness.html with these optional query parameters:
+    night=1          dark theme            lang=en     texts in English
+    api=0            the page cannot read the TV list (mode B, queue)      list=empty   a list with no store apps
+    catalog=big|three|one|empty|fail|slow|offline   what catalogo.json answers (default: the real file)
+    ping=ok|fail     what https://vidaahub.com/ping answers      launch=ok|fail|slow   what opening an app does
+    lite=1           the .lite class (no shadows, no transitions)      open=0   do not open the Store by itself
+  Only synthetic data here: no keys, no real addresses.
+-->
+<link rel="stylesheet" href="../../web/home.css">
+<link rel="stylesheet" href="../store/store.css">
+<style>
+  @font-face { font-family: 'Inter'; src: url('../../app/assets/fonts/InterVariable.ttf') format('truetype'); font-weight: 100 900; }
+  #home .ghost { position: absolute; left: 76px; top: 52px; font-size: 76px; font-weight: 600; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="sky" class="layer"><div class="grad day"></div><div class="grad night"></div></div>
+  <div id="home" class="layer"><div class="ghost">Para você</div></div>
+</div>
+<script>
+(function () {
+  var q = {};
+  location.search.replace(/^\?/, '').split('&').forEach(function (p) { var kv = p.split('='); if (kv[0]) q[kv[0]] = decodeURIComponent(kv[1] || ''); });
+  window.__q = q;
+  if (q.night === '1') document.body.className = 'night';
+  if (q.lite === '1') document.body.className += ' lite';
+  if (q.lang) document.documentElement.lang = q.lang;
+
+  function fit() {
+    var s = Math.min(window.innerWidth / 1920, window.innerHeight / 1080);
+    document.getElementById('stage').style.transform = s === 1 ? '' : 'scale(' + s + ')';
+  }
+  fit();
+  window.addEventListener('resize', fit);
+
+  // --- Catalogue fixtures (synthetic) ---
+  function art(color, glyph) {
+    var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="400" height="400"><rect width="400" height="400" fill="' + color + '"/>' +
+      '<text x="200" y="250" font-family="Arial" font-size="170" font-weight="700" fill="#fff" text-anchor="middle">' + glyph + '</text></svg>';
+    return 'data:image/svg+xml;base64,' + btoa(svg);
+  }
+  var NAMES = ['Aurora Player', 'Bruma TV', 'Cobalto', 'Delta Stream', 'Eco Radio', 'Faro', 'Granito', 'Horizonte', 'Ilha', 'Jade Player',
+    'Kappa', 'Lume', 'Mosaico', 'Nimbo', 'Oasis Music'];
+  var COLORS = ['#E5484D', '#F76B15', '#FFB224', '#30A46C', '#12A594', '#0091FF', '#6E56CF', '#D6409F', '#8E4EC6', '#3E63DD', '#AB6400', '#2B9A66', '#0D74CE', '#CE2C31', '#5C7C2F'];
+  function app(i, cat, featured, http) {
+    var n = NAMES[i % NAMES.length];
+    return {id: 'demo-' + i, name: n, url: (http ? 'http://' : 'https://') + 'player' + i + '.example.com/', icon: art(COLORS[i % COLORS.length], n.charAt(0)),
+      color: COLORS[i % COLORS.length], category: cat, desc: {pt: 'Descrição curta do ' + n + ' para testar o layout da Loja na TV.', en: 'Short description of ' + n + ' to test the Store layout.'},
+      site: 'https://player' + i + '.example.com/', paid: ['free', 'freemium', 'paid'][i % 3], needs: [], http: !!http, featured: !!featured, order: i + 1};
+  }
+  var CATS = [{id: 'destaques', name: {pt: 'Destaques', en: 'Featured'}, order: 1}, {id: 'iptv', name: {pt: 'IPTV', en: 'IPTV'}, order: 2},
+    {id: 'video-musica', name: {pt: 'Vídeo e música', en: 'Video and music'}, order: 3}];
+  function fixture(kind) {
+    var apps = [], i;
+    if (kind === 'big') {
+      for (i = 0; i < 3; i++) apps.push(app(i, 'destaques', true));
+      for (i = 3; i < 10; i++) apps.push(app(i, 'destaques', false));
+      for (i = 10; i < 13; i++) apps.push(app(i, 'iptv', false, i === 11));
+      apps.push(app(13, 'video-musica', false));
+      apps.push(app(14, 'video-musica', false));
+    } else if (kind === 'three') {
+      for (i = 0; i < 3; i++) apps.push(app(i, 'iptv', false, i === 1));
+    } else if (kind === 'one') {
+      apps.push(app(0, 'video-musica', true));
+    }
+    return {schema: 1, updated: '2026-10-26', categories: CATS, apps: apps};
+  }
+
+  // --- fetch: the catalogue and the ping are scripted, the rest is real ---
+  var realFetch = window.fetch.bind(window);
+  window.fetch = function (url, opts) {
+    var u = String(url);
+    if (/catalogo\.json/.test(u) && q.catalog) {
+      if (q.catalog === 'fail') return Promise.resolve(new Response('no', {status: 500}));
+      if (q.catalog === 'offline') return Promise.reject(new TypeError('Failed to fetch'));
+      var body = JSON.stringify(fixture(q.catalog === 'slow' ? 'big' : q.catalog));
+      var res = new Response(body, {status: 200});
+      return q.catalog === 'slow' ? new Promise(function (r) { setTimeout(function () { r(res); }, 3000); }) : Promise.resolve(res);
+    }
+    if (/vidaahub\.com\/ping/.test(u)) {
+      return q.ping === 'ok' ? new Promise(function (r) { setTimeout(function () { r(new Response('')); }, 600); }) : Promise.reject(new TypeError('Failed to fetch'));
+    }
+    return realFetch(url, opts);
+  };
+  if (q.catalog === 'offline') Object.defineProperty(navigator, 'onLine', {get: function () { return false; }});
+
+  // --- The TV's list: HiUtils_createRequest is synchronous, like the real one ---
+  var list = {AppInfo: [
+    {Id: '338', AppName: 'GloboPlay', Title: 'GloboPlay', URL: 'https://tv.globoplay.com.br/r/index.html', StartCommand: 'https://tv.globoplay.com.br/r/index.html ', IconURL: 'https://img.example.com/x.png', InstallTime: '2025-8-10', RunTimes: 0, StoreType: 'hisense', appInfo: {openMode: '99'}},
+    {Id: '16', AppName: 'TV Browser', URL: 'browser', StartCommand: 'browser', StoreType: 'browser'}
+  ]};
+  if (q.list === 'seeded') {
+    list.AppInfo.push({Id: 'fmtv_demo-1', AppName: 'Bruma TV', Title: 'Bruma TV', URL: 'https://player1.example.com/', StartCommand: 'https://player1.example.com/', IconURL: '', InstallTime: '2026-10-26', RunTimes: 0, StoreType: 'custom', Type: 'Browser'});
+    list.AppInfo.push({Id: 'fmtv_link-minha-casa', AppName: 'Minha casa', Title: 'Minha casa', URL: 'https://example.org/', StartCommand: 'https://example.org/', IconURL: '', InstallTime: '2026-10-26', RunTimes: 0, StoreType: 'custom', Type: 'Browser'});
+  }
+  var file = JSON.stringify(list);
+  if (q.api !== '0') {
+    window.HiUtils_createRequest = function (op, p) {
+      if (op === 'fileRead') return {ret: true, msg: file};
+      if (op === 'fileWrite') { file = p.writedata; window.__writes = (window.__writes || 0) + 1; return {ret: true, msg: 'success'}; }
+      return {ret: false, msg: 'unknown'};
+    };
+  }
+  else { try { delete window.HiUtils_createRequest; window.HiUtils_createRequest = undefined; } catch (e) { /* a browser stub may have put one there */ } }
+  window.__list = function () { return file; };
+
+  // The registry only lets approved hosts through; the demo hosts are approved here, and only here.
+  document.write('<script src="../store/registry.js"><\/script>');
+})();
+</script>
+<script>
+(function () {
+  var C = window.FMTVRegistry && window.FMTVRegistry.create;
+  if (C) {
+    window.FMTVRegistry.create = function (host) {
+      var reg = C.call(window.FMTVRegistry, host);
+      for (var i = 0; i < 16; i++) reg.ALLOWED.push('player' + i + '.example.com');
+      reg.ALLOWED.push('hisense.tv.twitch.tv', 'tv.emby.media', 'example.org');
+      return reg;
+    };
+  }
+})();
+</script>
+<script src="../store/store.js"></script>
+<script>
+(function () {
+  var q = window.__q;
+  window.__pinned = [];
+  window.FMTVStore._navigate = function (url) { window.__nav = url; };
+  var opened = 0;
+  window.__open = function () {
+    window.FMTVStore.open({
+      onClose: function () { window.__closed = (window.__closed || 0) + 1; },
+      focusRestore: function () {},
+      launch: function (app, done) {
+        opened++;
+        window.__launched = app;
+        if (q.launch === 'slow') return;   // never answers: the Store waits
+        setTimeout(function () { done(q.launch === 'fail' ? {ok: false} : {ok: true}); }, 400);
+      },
+      pin: function (app) { window.__pinned.push(app.id); },
+      pinned: function (id) { return window.__pinned.indexOf(id) >= 0; }
+    });
+  };
+  if (q.open !== '0') window.__open();
+})();
+</script>
+</body>
+</html>

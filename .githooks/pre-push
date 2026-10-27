@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Runs the VIDAA checks before a push. To turn it on in this clone (it is off until you do):
+#   git config core.hooksPath .githooks
+# To turn it off again:  git config --unset core.hooksPath
+exec bash "$(git rev-parse --show-toplevel)/vidaa/check.sh"

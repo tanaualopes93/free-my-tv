@@ -1,0 +1,10 @@
+{
+  "Version" : 2,
+  "AppInfo" : [
+    { "Id": "338",  "AppName": "GloboPlay", "StartCommand": "https://tv.globoplay.com.br/r/index.html ", "InstallTime": "2025-8-10" },
+    { "Id": "FreeMyTV", "AppName": "Free My TV", "URL": "https://tanaualopes93.github.io/free-my-tv/", "StartCommand": "https://tanaualopes93.github.io/free-my-tv/", "InstallTime": "2025-9-1", "RunTimes": 7 },
+    { "Id": "fmtv_antigo", "AppName": "Antigo", "Title": "Antigo", "URL": "https://tanaualopes93.github.io/antigo/", "StartCommand": "https://tanaualopes93.github.io/antigo/", "IconURL": "", "Icon_96": "", "Image": "", "Thumb": "", "InstallTime": "2026-10-1", "RunTimes": 2, "Type": "Browser", "StoreType": "custom", "PreInstall": false },
+    { "Id": "16", "AppName": "TV Browser", "URL": "browser", "StartCommand": "browser", "StoreType": "browser" }
+  ],
+  "Extra" : [1, 2, 3]
+}

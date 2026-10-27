@@ -8,6 +8,29 @@
  */
 var CONFIG = window.CONFIG || {};
 
+/**
+ * VIDAA: what the installer on the person's computer sends back in the address, after a "#": the TMDB key (#k=...) and
+ * the apps just installed (#instalados=a,b). Both are kept on the TV and the address is cleaned at once, so the key
+ * is never in a link, a log or the history. The key never leaves this TV (a fragment isn't sent to any server).
+ */
+(function () {
+  'use strict';
+  if (TV.name !== 'vidaa' && TV.name !== 'browser') return;
+  var hash = window.location.hash || '';
+  if (!/^#(.*&)?(k|instalados)=/.test(hash)) return;
+  var parts = hash.slice(1).split('&');
+  for (var i = 0; i < parts.length; i++) {
+    var at = parts[i].indexOf('='), name = parts[i].slice(0, at), value = '';
+    try { value = decodeURIComponent(parts[i].slice(at + 1)).replace(/^\s+|\s+$/g, ''); } catch (e) { continue; }
+    if (!value) continue;
+    try {
+      if (name === 'k') localStorage.setItem('fmtv.tmdbKey', value);
+      else if (name === 'instalados') localStorage.setItem('fmtv.store.installed', value);
+    } catch (e) {}
+  }
+  try { window.history.replaceState(null, '', window.location.pathname + window.location.search); } catch (e) {}
+})();
+
 var Place = (function () {
   'use strict';
   var EURO = /^(AT|BE|CY|DE|EE|ES|FI|FR|GR|HR|IE|IT|LT|LU|LV|MT|NL|PT|SI|SK)$/;
@@ -260,7 +283,11 @@ var Data = (function () {
 
   // MARK: - Picks (TMDB)
 
+  // A key typed once on the VIDAA installer (#k=...) is kept on the TV; config.properties wins when it has one.
   var KEY = (CONFIG.tmdbKey || '').trim();
+  if (!KEY) {
+    try { KEY = (localStorage.getItem('fmtv.tmdbKey') || '').trim(); } catch (e) {}
+  }
   var REGION = Place.country;
   var API = 'https://api.tmdb.org/3';   // TMDB's own mirror of api.themoviedb.org: some ISPs block the other name (#327)
 

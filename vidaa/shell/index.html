@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>Free My TV, instalador</title>
+<link rel="icon" href="/shell/icon.png">
+<link rel="stylesheet" href="/shell/shell.css">
+</head>
+<body>
+<div id="sky"></div>
+
+<!-- TV: 1920x1080, arrows, OK and Back -->
+<main id="tv" hidden>
+  <div id="stage">
+    <section id="home" class="screen">
+      <div class="col-main">
+        <img class="logo" src="/shell/icon.png" width="160" height="160" alt="">
+        <h1>Free My TV</h1>
+        <p class="lead">Instalador para a sua TV Hisense</p>
+        <div id="actions">
+          <button type="button" class="btn primary" id="b-queue" data-act="queue" hidden></button>
+          <button type="button" class="btn primary" id="b-install" data-act="install">Instalar na TV</button>
+          <p class="more-label">Outras opções</p>
+          <div class="grid">
+            <button type="button" class="btn" data-act="restore">Restaurar</button>
+            <button type="button" class="btn" data-act="key">Chave do TMDB</button>
+            <button type="button" class="btn" data-act="link">Adicionar por link</button>
+            <button type="button" class="btn" id="b-remove" data-act="remove">Remover</button>
+          </div>
+        </div>
+      </div>
+      <aside class="col-side">
+        <div class="panel">
+          <h2>Esta TV</h2>
+          <dl>
+            <dt>Modelo</dt><dd id="p-model">-</dd>
+            <dt>Sistema</dt><dd id="p-os">-</dd>
+            <dt>Apps na lista</dt><dd id="p-count">-</dd>
+            <dt>Free My TV</dt><dd id="p-ours">-</dd>
+            <dt>Computador</dt><dd id="p-server">-</dd>
+          </dl>
+        </div>
+        <p class="warn">Quando terminar, volte o DNS da TV para automático. Senão a TV fica sem internet se este computador desligar.</p>
+      </aside>
+      <ol class="strip">
+        <li><b>1</b>Aceite o aviso de segurança</li>
+        <li><b>2</b>Aperte Instalar na TV</li>
+        <li><b>3</b>Volte o DNS para automático</li>
+      </ol>
+    </section>
+
+    <section id="sheet" class="screen" hidden>
+      <div class="sheet">
+        <h2 id="s-title"></h2>
+        <p id="s-body" class="body"></p>
+        <p id="s-meta" class="meta"></p>
+        <div id="s-extra"></div>
+        <div id="s-btns" class="row"></div>
+      </div>
+    </section>
+  </div>
+</main>
+
+<!-- Computer: plain responsive page -->
+<main id="pc" hidden>
+  <header class="pc-head">
+    <img src="/shell/icon.png" width="96" height="96" alt="">
+    <div>
+      <h1>Free My TV</h1>
+      <p>Instalador para TV Hisense (VIDAA)</p>
+    </div>
+  </header>
+  <section class="pc-card">
+    <h2>Esta página funciona na TV</h2>
+    <p>Você abriu o instalador no computador, e ele só consegue mexer na lista de apps quando está aberto no navegador da TV. Siga os passos abaixo.</p>
+    <p class="ip-box">Endereço deste computador: <strong id="pc-ip">...</strong></p>
+    <ol>
+      <li>Anote o endereço mostrado acima (é o do seu computador).</li>
+      <li>Na TV, abra Configurações, Rede, e troque o DNS de automático para manual. Digite o endereço anotado.</li>
+      <li>Na TV, abra o navegador em <strong>vidaahub.com</strong> e aperte Instalar na TV. Aceite o aviso de segurança que aparecer.</li>
+      <li>Deu certo: espere 30 segundos, eu confiro. Depois tire a TV da tomada por 10 segundos.</li>
+      <li>Em qualquer fim (deu certo, deu erro ou você desistiu): volte o DNS para automático.</li>
+    </ol>
+    <p class="pc-warn">Quando terminar, volte o DNS da TV para automático. Senão a TV fica sem internet se este computador desligar.</p>
+  </section>
+</main>
+
+<noscript><p class="nojs">Este instalador precisa de JavaScript.</p></noscript>
+<script src="/store/registry.js"></script>
+<script src="/shell/shell.js"></script>
+</body>
+</html>

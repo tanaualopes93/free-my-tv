@@ -22,6 +22,30 @@ MAP = {
 }
 
 
+def draw_store(em):
+    """The Store's storefront (awning, wall, door, window), drawn here because it is not in the font set above."""
+    n = 984
+    img = Image.new("L", (n, n), 0)
+    d = ImageDraw.Draw(img)
+    d.rounded_rectangle((70, 90, 914, 360), radius=60, fill=255)           # awning
+    for i in range(4):                                                      # scalloped edge
+        x0 = 70 + i * 211
+        d.pieslice((x0, 250, x0 + 211, 470), 0, 180, fill=255)
+    d.rectangle((140, 400, 844, 900), fill=255)                             # wall
+    d.rounded_rectangle((140, 860, 844, 920), radius=24, fill=255)
+    d.rounded_rectangle((590, 560, 740, 920), radius=18, fill=0)            # door
+    d.rounded_rectangle((250, 560, 470, 760), radius=18, fill=0)            # window
+    box = img.getbbox()
+    img = img.crop((box[0] - 16, box[1] - 16, box[2] + 16, box[3] + 16))
+    img = img.resize((max(1, round(img.width / 8)), max(1, round(img.height / 8))), Image.LANCZOS)
+    rgba = Image.new("RGBA", img.size, (255, 255, 255, 0))
+    rgba.putalpha(img)
+    return rgba
+
+
+DRAWN = {"store": draw_store}
+
+
 def main():
     font_path, cp_path, out = sys.argv[1], sys.argv[2], sys.argv[3]
     em = int(sys.argv[4]) if len(sys.argv) > 4 else 172
@@ -54,7 +78,9 @@ def main():
         rgba = Image.new("RGBA", img.size, (255, 255, 255, 0))
         rgba.putalpha(img)
         rgba.save(os.path.join(out, name + ".png"), optimize=True)
-    print("ok:", len(MAP), "icons in", out, "axes:", axes)
+    for name, fn in DRAWN.items():
+        fn(em).save(os.path.join(out, name + ".png"), optimize=True)
+    print("ok:", len(MAP) + len(DRAWN), "icons in", out, "axes:", axes)
 
 
 if __name__ == "__main__":

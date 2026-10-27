@@ -4,7 +4,8 @@ config.properties
 *.idsig
 # An LG TV's app list and icons (webos/apps.py)
 webos-apps.local.json
-webos-icons.local/
+webos-icons.local/*
+!local/servidor.example.json
 
 # Build output
 out/
@@ -17,3 +18,11 @@ __pycache__/
 # macOS
 .DS_Store
 tools/.i18n-cache.json
+
+# Local machine files: server config, certificates, logs
+local/*
+!local/servidor.example.json
+*.key
+*.pem
+*.crt
+*.p12

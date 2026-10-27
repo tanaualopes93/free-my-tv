@@ -136,13 +136,9 @@ This build takes your city from the TV's time zone (change it in *Home Settings*
 
 ## Hisense TVs (VIDAA)
 
-The same home screen as a VIDAA web app (tested in a browser that stands in for the TV; first tried on a 58A6K). VIDAA apps are web addresses, so this one is hosted: `python3 vidaa/build.py --generic` makes `out/vidaa/`, which this fork publishes on GitHub Pages at <https://tanaualopes93.github.io/free-my-tv/>.
+The same home screen runs as a VIDAA web app, hosted on GitHub Pages at <https://tanaualopes93.github.io/free-my-tv/> (`python vidaa/build.py --generic` makes `out/vidaa/`). On VIDAA it adds an app **Store** (including an IPTV player tab), a shelf that only lists apps that really open, and a PC installer served for `vidaahub.com` (the only site where VIDAA allows installing apps) with backups and a *Restore* button.
 
-1. **On your computer**, run [vidaa-appstore](https://github.com/trialuser/vidaa-appstore) with Free My TV in its list: it answers for `vidaahub.com`, the only site where VIDAA allows `Hisense_installApp`.
-2. **On the TV**, set the DNS server to your computer's IP, open `https://vidaahub.com/` in the browser (accept the certificate warning) and install Free My TV.
-3. **On the TV**, put the DNS back to automatic and restart the TV.
-
-VIDAA has no public reference for listing or opening apps. The shelf lists the usual VIDAA apps (or what `Hisense_getInstalledApps` returns, where it answers). Opening one tries `Hisense_launchAppViaName`, then `Hisense_launchAppViaUri`, and for web apps goes to their address. *Home Settings* → *About this TV* shows those calls' own source and the last tries, so they can be set right for a firmware. The drawer has no inputs and no TV Settings there.
+Tested on a Hisense 58A51HSV (VIDAA U09.09, Chrome 111). Setup, commands, the PC server and what must never be committed are in [vidaa/README.md](vidaa/README.md); the step-by-step guide for TV owners (in Portuguese) is [vidaa/GUIA.md](vidaa/GUIA.md).
 
 ## Settings
 
